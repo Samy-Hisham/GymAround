@@ -19,9 +19,9 @@ class GymViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel()
 
     private var apiService: GymsApiService
 
-    val errorHandle = CoroutineExceptionHandler { _, throwable ->
-        throwable.printStackTrace()
-    }
+//    val errorHandle = CoroutineExceptionHandler { _, throwable ->
+//        throwable.printStackTrace()
+//    }
 
     init {
         val retrofit: Retrofit = Retrofit.Builder()
