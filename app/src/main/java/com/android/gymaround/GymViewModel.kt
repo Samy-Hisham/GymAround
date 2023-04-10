@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,6 +17,8 @@ class GymViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel()
     var state by mutableStateOf(emptyList<Gym>())
 
     private var apiService: GymsApiService
+
+    private var gymDao = GymsDatabase.getDeoInstance(App.getApplicationContext())
 
 //    val errorHandle = CoroutineExceptionHandler { _, throwable ->
 //        throwable.printStackTrace()
@@ -54,7 +55,17 @@ class GymViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel()
         }
     }
 
-    private suspend fun getGymsFromRemoteDB() = withContext(Dispatchers.IO) { apiService.getGym() }
+    private suspend fun getGymsFromRemoteDB() = withContext(Dispatchers.IO) {
+        try {
+
+            val gyms = apiService.getGym()
+            gymDao.addAll(gyms)
+            return@withContext gyms
+
+        } catch (e: Exception) {
+            gymDao.getAll()
+        }
+    }
 
     fun toggleFavoriteState(gymId: Int) {
         val gyms = state.toMutableList()
@@ -62,7 +73,15 @@ class GymViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel()
         gyms[itemIndex] = gyms[itemIndex].copy(isFavourite = !gyms[itemIndex].isFavourite)
         storeSelectedGym(gyms[itemIndex])
         state = gyms
+        viewModelScope.launch { toggleFavouriteGym(gymId, gyms[itemIndex].isFavourite) }
+    }
 
+    private suspend fun toggleFavouriteGym(gymId: Int, newFavoriteState: Boolean) {
+        withContext(Dispatchers.IO) {
+            gymDao.update(GymFavoriteState(
+                id = gymId,
+                isFavourite = newFavoriteState))
+        }
     }
 
     private fun storeSelectedGym(gym: Gym) {
@@ -76,14 +95,15 @@ class GymViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel()
     }
 
     private fun List<Gym>.restoreSelectedGym(): List<Gym> {
-        val gyms = this
-        savedStateHandle.get<List<Int>?>(FAV_IDS)?.let {
-            it.forEach { gymId ->
-                gyms.find { it.id == gymId }?.isFavourite = true
+        savedStateHandle.get<List<Int>?>(FAV_IDS)?.let { savedIds ->
+            val gymMap = this.associateBy { it.id }.toMutableMap()
+            savedIds.forEach { gymId ->
+                val gym = gymMap[gymId] ?: return@forEach
+                gymMap[gymId] = gym.copy(isFavourite = true)
             }
+            return gymMap.values.toList()
         }
-
-        return gyms
+        return this
     }
 
     companion object {
